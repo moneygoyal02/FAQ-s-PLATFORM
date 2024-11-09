@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState , useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
 
@@ -65,23 +66,50 @@ export default function Home() {
     }
   })
 
+  useEffect(() => {
+    const token = localStorage.getItem('token')
+    if (token) {
+      // Verify the token and set the user
+      decodeToken(token)
+     
+    }
+  }, [])
+  
+  const decodeToken = (token: string) => {
+    try {
+      const payload = token.split('.')[1];
+      const decoded = JSON.parse(atob(payload));
+      setUser({ id: decoded.userId, username: decoded.username, role: decoded.role });
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    } catch (error) {
+      console.error('Token decoding failed:', error);
+      logout();
+    }
+  };
+  
+  
+  
+  
+
   const loginMutation = useMutation({
     mutationFn: async (credentials: { username: string; password: string }) => {
       const response = await axios.post(`${API_URL}/auth/login`, credentials)
       return response.data
     },
     onSuccess: (data) => {
-      setUser(data.user)
-      localStorage.setItem('token', data.token)
-      axios.defaults.headers.common['Authorization'] = `Bearer ${data.token}`
-      showNotification('success', 'Logged in successfully!')
-      setIsLoginDialogOpen(false)
+      localStorage.setItem('token', data.token);
+      decodeToken(data.token);
+      showNotification('success', 'Logged in successfully!');
+      setIsLoginDialogOpen(false);
     },
+    
     onError: () => {
       showNotification('error', 'Login failed. Please check your credentials.')
     },
   })
-  
+
+
+
 
   const addFaqMutation = useMutation({
     mutationFn: async (newFaq: { question: string; answer: string; category: string }) => {
@@ -97,7 +125,7 @@ export default function Home() {
       showNotification('error', 'Failed to add FAQ. Please try again.')
     }
   })
-  
+
   const updateFaqMutation = useMutation({
     mutationFn: async (updatedFaq: { id: string; question: string; answer: string; category: string; isPinned: boolean }) => {
       const response = await axios.put(`${API_URL}/faqs/${updatedFaq.id}`, updatedFaq)
@@ -112,7 +140,7 @@ export default function Home() {
       showNotification('error', 'Failed to update FAQ. Please try again.')
     }
   })
-  
+
   const deleteFaqMutation = useMutation({
     mutationFn: async (id: string) => {
       await axios.delete(`${API_URL}/faqs/${id}`)
@@ -125,7 +153,7 @@ export default function Home() {
       showNotification('error', 'Failed to delete FAQ. Please try again.')
     }
   })
-  
+
   const addCommentMutation = useMutation({
     mutationFn: async ({ faqId, content }: { faqId: string; content: string }) => {
       const response = await axios.post(`${API_URL}/faqs/${faqId}/comments`, { content })
@@ -139,7 +167,7 @@ export default function Home() {
       showNotification('error', 'Failed to add comment. Please try again.')
     }
   })
-  
+
 
   const showNotification = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message })
@@ -196,7 +224,7 @@ export default function Home() {
     addCommentMutation.mutate({ faqId, content })
   }
 
-  const filteredFAQs = faqs?.filter(faq => 
+  const filteredFAQs = faqs?.filter(faq =>
     faq.question.toLowerCase().includes(searchTerm.toLowerCase()) ||
     faq.answer.toLowerCase().includes(searchTerm.toLowerCase()) ||
     faq.category.toLowerCase().includes(searchTerm.toLowerCase())
@@ -221,7 +249,7 @@ export default function Home() {
           <Button onClick={() => setIsLoginDialogOpen(true)}>Login</Button>
         )}
       </div>
-      
+
       {notification && (
         <Alert variant={notification.type === 'success' ? 'default' : 'destructive'} className="mb-4">
           <AlertTitle>{notification.type === 'success' ? 'Success' : 'Error'}</AlertTitle>
