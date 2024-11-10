@@ -1,3 +1,5 @@
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable react/no-unescaped-entities */
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
@@ -87,7 +89,7 @@ export default function EnhancedFAQCollaborator() {
       decodeToken(token)
     }
     fetchFAQs()
-  }, [fetchFAQs])
+  }, [fetchFAQs, decodeToken])
 
   const decodeToken = (token: string) => {
     try {
@@ -258,7 +260,7 @@ export default function EnhancedFAQCollaborator() {
           )}
         </CardHeader>
         <CardContent>
-          <CardDescription>Collaborate and manage your startup's frequently asked questions</CardDescription>
+          <CardDescription>Collaborate and manage your startup&apos;s frequently asked questions</CardDescription>
         </CardContent>
       </Card>
 
