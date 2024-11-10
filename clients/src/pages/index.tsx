@@ -1,18 +1,20 @@
-import React, { useState , useEffect } from 'react'
+'use client'
+
+import React, { useState, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-
+import { PinIcon, PinOffIcon, EditIcon, TrashIcon, PlusIcon, SearchIcon, LockIcon } from 'lucide-react'
+import { Toaster, toast } from 'react-hot-toast'
+import { Label } from "@/components/ui/label"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
 
@@ -35,6 +37,7 @@ interface FAQ {
   answer: string
   category: string
   isPinned: boolean
+  visibility: 'public' | 'internal'
   createdBy: User
   updatedBy: User
   updatedAt: string
@@ -42,23 +45,12 @@ interface FAQ {
 }
 
 const categories = [
-  'General', 
-  'Product', 
-  'Support', 
-  'Technical', 
-  'Business', 
-  'Product Development', 
-  'Customer Support', 
-  'Operations', 
-  'Marketing and Sales', 
-  'Legal and Compliance', 
-  'Finance and Funding', 
-  'Technology and Tools', 
-  'Team and Culture'
-];
+  'General', 'Product', 'Support', 'Technical', 'Business', 'Product Development',
+  'Customer Support', 'Operations', 'Marketing and Sales', 'Legal and Compliance',
+  'Finance and Funding', 'Technology and Tools', 'Team and Culture'
+]
 
-
-export default function Home() {
+export default function EnhancedFAQCollaborator() {
   const [user, setUser] = useState<User | null>(null)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -69,42 +61,46 @@ export default function Home() {
   const [newAnswer, setNewAnswer] = useState('')
   const [newCategory, setNewCategory] = useState('General')
   const [searchTerm, setSearchTerm] = useState('')
-  const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
+  const [newVisibility, setNewVisibility] = useState<'public' | 'internal'>('public')
+  const [activeTab, setActiveTab] = useState('all')
 
   const queryClient = useQueryClient()
 
-  const { data: faqs, isLoading, isError } = useQuery<FAQ[]>({
+  const { data: faqs, isLoading, isError, refetch } = useQuery<FAQ[]>({
     queryKey: ['faqs'],
     queryFn: async () => {
-      const response = await axios.get(`${API_URL}/faqs`)
+      const token = localStorage.getItem('token')
+      const headers = token ? { Authorization: `Bearer ${token}` } : {}
+      const response = await axios.get(`${API_URL}/faqs`, { headers })
       return response.data
-    }
+    },
+    refetchOnWindowFocus: false,
   })
+
+  const fetchFAQs = useCallback(() => {
+    refetch()
+  }, [refetch])
 
   useEffect(() => {
     const token = localStorage.getItem('token')
     if (token) {
-      // Verify the token and set the user
       decodeToken(token)
-     
     }
-  }, [])
-  
+    fetchFAQs()
+  }, [fetchFAQs])
+
   const decodeToken = (token: string) => {
     try {
-      const payload = token.split('.')[1];
-      const decoded = JSON.parse(atob(payload));
-      setUser({ id: decoded.userId, username: decoded.username, role: decoded.role });
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      const payload = token.split('.')[1]
+      const decoded = JSON.parse(atob(payload))
+      setUser({ id: decoded.userId, username: decoded.username, role: decoded.role })
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+      setActiveTab('internal') // Set default tab to 'internal' when user logs in
     } catch (error) {
-      console.error('Token decoding failed:', error);
-      logout();
+      console.error('Token decoding failed:', error)
+      logout()
     }
-  };
-  
-  
-  
-  
+  }
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: { username: string; password: string }) => {
@@ -112,47 +108,44 @@ export default function Home() {
       return response.data
     },
     onSuccess: (data) => {
-      localStorage.setItem('token', data.token);
-      decodeToken(data.token);
-      showNotification('success', 'Logged in successfully!');
-      setIsLoginDialogOpen(false);
+      localStorage.setItem('token', data.token)
+      decodeToken(data.token)
+      toast.success('Logged in successfully!')
+      setIsLoginDialogOpen(false)
+      fetchFAQs()
     },
-    
     onError: () => {
-      showNotification('error', 'Login failed. Please check your credentials.')
+      toast.error('Login failed. Please check your credentials.')
     },
   })
 
-
-
-
   const addFaqMutation = useMutation({
-    mutationFn: async (newFaq: { question: string; answer: string; category: string }) => {
+    mutationFn: async (newFaq: { question: string; answer: string; category: string; visibility: 'public' | 'internal' }) => {
       const response = await axios.post(`${API_URL}/faqs`, newFaq)
       return response.data
     },
     onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['faqs'] })
-      showNotification('success', 'FAQ added successfully!')
+      queryClient.invalidateQueries({ queryKey: ['faqs'] })
+      toast.success('FAQ added successfully!')
       setIsAddEditDialogOpen(false)
     },
     onError: () => {
-      showNotification('error', 'Failed to add FAQ. Please try again.')
+      toast.error('Failed to add FAQ. Please try again.')
     }
   })
 
   const updateFaqMutation = useMutation({
-    mutationFn: async (updatedFaq: { id: string; question: string; answer: string; category: string; isPinned: boolean }) => {
+    mutationFn: async (updatedFaq: { id: string; question: string; answer: string; category: string; isPinned: boolean; visibility: 'public' | 'internal' }) => {
       const response = await axios.put(`${API_URL}/faqs/${updatedFaq.id}`, updatedFaq)
       return response.data
     },
     onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['faqs'] })
-      showNotification('success', 'FAQ updated successfully!')
+      queryClient.invalidateQueries({ queryKey: ['faqs'] })
+      toast.success('FAQ updated successfully!')
       setIsAddEditDialogOpen(false)
     },
     onError: () => {
-      showNotification('error', 'Failed to update FAQ. Please try again.')
+      toast.error('Failed to update FAQ. Please try again.')
     }
   })
 
@@ -161,11 +154,11 @@ export default function Home() {
       await axios.delete(`${API_URL}/faqs/${id}`)
     },
     onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['faqs'] })
-      showNotification('success', 'FAQ deleted successfully!')
+      queryClient.invalidateQueries({ queryKey: ['faqs'] })
+      toast.success('FAQ deleted successfully!')
     },
     onError: () => {
-      showNotification('error', 'Failed to delete FAQ. Please try again.')
+      toast.error('Failed to delete FAQ. Please try again.')
     }
   })
 
@@ -175,19 +168,13 @@ export default function Home() {
       return response.data
     },
     onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['faqs'] })
-      showNotification('success', 'Comment added successfully!')
+      queryClient.invalidateQueries({ queryKey: ['faqs'] })
+      toast.success('Comment added successfully!')
     },
     onError: () => {
-      showNotification('error', 'Failed to add comment. Please try again.')
+      toast.error('Failed to add comment. Please try again.')
     }
   })
-
-
-  const showNotification = (type: 'success' | 'error', message: string) => {
-    setNotification({ type, message })
-    setTimeout(() => setNotification(null), 3000)
-  }
 
   const login = (e: React.FormEvent) => {
     e.preventDefault()
@@ -198,7 +185,9 @@ export default function Home() {
     setUser(null)
     localStorage.removeItem('token')
     delete axios.defaults.headers.common['Authorization']
-    showNotification('success', 'Logged out successfully!')
+    toast.success('Logged out successfully!')
+    fetchFAQs()
+    setActiveTab('all')
   }
 
   const addOrEditFAQ = (e: React.FormEvent) => {
@@ -210,14 +199,16 @@ export default function Home() {
         answer: newAnswer,
         category: newCategory,
         isPinned: editingFaq.isPinned,
+        visibility: newVisibility,
       })
     } else {
-      addFaqMutation.mutate({ question: newQuestion, answer: newAnswer, category: newCategory })
+      addFaqMutation.mutate({ question: newQuestion, answer: newAnswer, category: newCategory, visibility: newVisibility })
     }
     setEditingFaq(null)
     setNewQuestion('')
     setNewAnswer('')
     setNewCategory('General')
+    setNewVisibility('public')
   }
 
   const deleteFAQ = (id: string) => {
@@ -230,152 +221,86 @@ export default function Home() {
       question: faq.question,
       answer: faq.answer,
       category: faq.category,
-      isPinned: !faq.isPinned
+      isPinned: !faq.isPinned,
+      visibility: faq.visibility
     })
   }
-
 
   const addComment = (faqId: string, content: string) => {
     addCommentMutation.mutate({ faqId, content })
   }
 
   const filteredFAQs = faqs?.filter(faq =>
-    faq.question.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (faq.question.toLowerCase().includes(searchTerm.toLowerCase()) ||
     faq.answer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    faq.category.toLowerCase().includes(searchTerm.toLowerCase())
+    faq.category.toLowerCase().includes(searchTerm.toLowerCase())) &&
+    (activeTab === 'all' || 
+     (activeTab === 'pinned' && faq.isPinned) ||
+     (activeTab === 'internal' && faq.visibility === 'internal'))
   ) || []
 
-  const pinnedFAQs = filteredFAQs.filter(faq => faq.isPinned)
-  const unpinnedFAQs = filteredFAQs.filter(faq => !faq.isPinned)
-
-  if (isLoading) return <div>Loading...</div>
-  if (isError) return <div>Error fetching FAQs</div>
+  if (isLoading) return <div className="flex justify-center items-center h-screen">Loading...</div>
+  if (isError) return <div className="flex justify-center items-center h-screen">Error fetching FAQs</div>
 
   return (
-    <div className="container mx-auto p-4">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-3xl font-bold">Startup FAQ Collaborator</h1>
-        {user ? (
-          <div className="flex items-center gap-2">
-            <span>Welcome, {user.username} ({user.role})</span>
-            <Button onClick={logout}>Logout</Button>
-          </div>
-        ) : (
-          <Button onClick={() => setIsLoginDialogOpen(true)}>Login</Button>
+    <div className="container mx-auto p-4 max-w-4xl">
+      <Toaster position="top-right" />
+      <Card className="mb-8">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-2xl font-bold">Startup FAQ Collaborator</CardTitle>
+          {user ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm">Welcome, {user.username} ({user.role})</span>
+              <Button onClick={logout} size="sm" variant="outline">Logout</Button>
+            </div>
+          ) : (
+            <Button onClick={() => setIsLoginDialogOpen(true)} size="sm">Login</Button>
+          )}
+        </CardHeader>
+        <CardContent>
+          <CardDescription>Collaborate and manage your startup's frequently asked questions</CardDescription>
+        </CardContent>
+      </Card>
+
+      <div className="flex gap-4 mb-6">
+        <div className="relative flex-grow">
+          <SearchIcon className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
+          <Input
+            type="text"
+            placeholder="Search FAQs..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-8"
+          />
+        </div>
+        {user && (user.role === 'admin' || user.role === 'editor') && (
+          <Button onClick={() => setIsAddEditDialogOpen(true)} className="whitespace-nowrap">
+            <PlusIcon className="mr-2 h-4 w-4" /> Add New FAQ
+          </Button>
         )}
       </div>
 
-      {notification && (
-        <Alert variant={notification.type === 'success' ? 'default' : 'destructive'} className="mb-4">
-          <AlertTitle>{notification.type === 'success' ? 'Success' : 'Error'}</AlertTitle>
-          <AlertDescription>{notification.message}</AlertDescription>
-        </Alert>
-      )}
-
-      <div className="mb-4">
-        <Input
-          type="text"
-          placeholder="Search FAQs..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-      </div>
-
-      {user && (user.role === 'admin' || user.role === 'editor') && (
-        <Button onClick={() => setIsAddEditDialogOpen(true)} className="mb-4">Add New FAQ</Button>
-      )}
-
-      <Tabs defaultValue="all" className="mb-4">
-        <TabsList>
-          <TabsTrigger value="all">All FAQs</TabsTrigger>
-          <TabsTrigger value="pinned">Pinned FAQs</TabsTrigger>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
+        <TabsList className="w-full">
+          <TabsTrigger value="all" className="flex-1">All FAQs</TabsTrigger>
+          <TabsTrigger value="pinned" className="flex-1">Pinned FAQs</TabsTrigger>
+          {user && (
+            <TabsTrigger value="internal" className="flex-1">
+              <LockIcon className="h-4 w-4 mr-1" /> Internal FAQs
+            </TabsTrigger>
+          )}
         </TabsList>
         <TabsContent value="all">
-          <Accordion type="single" collapsible className="w-full">
-            {pinnedFAQs.concat(unpinnedFAQs).map((faq) => (
-              <AccordionItem key={faq._id} value={faq._id}>
-                <AccordionTrigger>
-                  <div className="flex items-center gap-2">
-                    {faq.isPinned && <Badge variant="secondary">Pinned</Badge>}
-                    <Badge>{faq.category}</Badge>
-                    {faq.question}
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <p className="mb-2">{faq.answer}</p>
-                  <p className="text-sm text-gray-500">Last updated by {faq.updatedBy.username} on {new Date(faq.updatedAt).toLocaleString()}</p>
-                  {user && (user.role === 'admin' || user.role === 'editor') && (
-                    <div className="flex gap-2 mt-2">
-                      <Button onClick={() => {
-                        setEditingFaq(faq)
-                        setNewQuestion(faq.question)
-                        setNewAnswer(faq.answer)
-                        setNewCategory(faq.category)
-                        setIsAddEditDialogOpen(true)
-                      }} variant="outline">Edit</Button>
-                      <Button onClick={() => deleteFAQ(faq._id)} variant="destructive">Delete</Button>
-                      <Button onClick={() => togglePinFAQ(faq)} variant="outline">
-                        {faq.isPinned ? 'Unpin' : 'Pin'}
-                      </Button>
-                    </div>
-                  )}
-                  <div className="mt-4">
-                    <h4 className="font-semibold mb-2">Comments:</h4>
-                    {faq.comments.map((comment) => (
-                      <div key={comment._id} className="bg-gray-100 p-2 rounded mb-2">
-                        <p>{comment.content}</p>
-                        <p className="text-xs text-gray-500">By {comment.userId} on {new Date(comment.createdAt).toLocaleString()}</p>
-                      </div>
-                    ))}
-                    {user && (
-                      <form onSubmit={(e) => {
-                        e.preventDefault()
-                        const content = (e.target as HTMLFormElement).comment.value
-                        addComment(faq._id, content)
-                        ;(e.target as HTMLFormElement).comment.value = ''
-                      }} className="mt-2">
-                        <Input name="comment" placeholder="Add a comment..." />
-                        <Button type="submit" className="mt-2">Add Comment</Button>
-                      </form>
-                    )}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
+          <FAQList faqs={filteredFAQs} user={user} togglePinFAQ={togglePinFAQ} deleteFAQ={deleteFAQ} addComment={addComment} setEditingFaq={setEditingFaq} setIsAddEditDialogOpen={setIsAddEditDialogOpen} />
         </TabsContent>
         <TabsContent value="pinned">
-          <Accordion type="single" collapsible className="w-full">
-            {pinnedFAQs.map((faq) => (
-              <AccordionItem key={faq._id} value={faq._id}>
-                <AccordionTrigger>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary">Pinned</Badge>
-                    <Badge>{faq.category}</Badge>
-                    {faq.question}
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <p className="mb-2">{faq.answer}</p>
-                  <p className="text-sm text-gray-500">Last updated by {faq.updatedBy.username} on {new Date(faq.updatedAt).toLocaleString()}</p>
-                  {user && (user.role === 'admin' || user.role === 'editor') && (
-                    <div className="flex gap-2 mt-2">
-                      <Button onClick={() => {
-                        setEditingFaq(faq)
-                        setNewQuestion(faq.question)
-                        setNewAnswer(faq.answer)
-                        setNewCategory(faq.category)
-                        setIsAddEditDialogOpen(true)
-                      }} variant="outline">Edit</Button>
-                      <Button onClick={() => deleteFAQ(faq._id)} variant="destructive">Delete</Button>
-                      <Button onClick={() => togglePinFAQ(faq)} variant="outline">Unpin</Button>
-                    </div>
-                  )}
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
+          <FAQList faqs={filteredFAQs} user={user} togglePinFAQ={togglePinFAQ} deleteFAQ={deleteFAQ} addComment={addComment} setEditingFaq={setEditingFaq} setIsAddEditDialogOpen={setIsAddEditDialogOpen} />
         </TabsContent>
+        {user && (
+          <TabsContent value="internal">
+            <FAQList faqs={filteredFAQs} user={user} togglePinFAQ={togglePinFAQ} deleteFAQ={deleteFAQ} addComment={addComment} setEditingFaq={setEditingFaq} setIsAddEditDialogOpen={setIsAddEditDialogOpen} />
+          </TabsContent>
+        )}
       </Tabs>
 
       <Dialog open={isLoginDialogOpen} onOpenChange={setIsLoginDialogOpen}>
@@ -405,40 +330,138 @@ export default function Home() {
       </Dialog>
 
       <Dialog open={isAddEditDialogOpen} onOpenChange={setIsAddEditDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[550px]">
           <DialogHeader>
             <DialogTitle>{editingFaq ? 'Edit FAQ' : 'Add New FAQ'}</DialogTitle>
             <DialogDescription>
               {editingFaq ? 'Edit the FAQ details below.' : 'Enter the details for the new FAQ.'}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={addOrEditFAQ} className="space-y-4">
-            <Input
-              placeholder="Question"
-              value={newQuestion}
-              onChange={(e) => setNewQuestion(e.target.value)}
-            />
-            <Textarea
-              placeholder="Answer"
-              value={newAnswer}
-              onChange={(e) => setNewAnswer(e.target.value)}
-            />
-            <Select value={newCategory} onValueChange={setNewCategory}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a category" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((category) => (
-                  <SelectItem key={category} value={category}>{category}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <form onSubmit={addOrEditFAQ} className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="question">Question</Label>
+              <Input
+                id="question"
+                placeholder="Enter the question"
+                value={newQuestion}
+                onChange={(e) => setNewQuestion(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="answer">Answer</Label>
+              <Textarea
+                id="answer"
+                placeholder="Enter the answer"
+                value={newAnswer}
+                onChange={(e) => setNewAnswer(e.target.value)}
+                required
+                className="min-h-[100px]"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="category">Category</Label>
+                <Select value={newCategory} onValueChange={setNewCategory}>
+                  <SelectTrigger id="category" className="bg-background">
+                    <SelectValue placeholder="Select a category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((category) => (
+                      <SelectItem key={category} value={category}>{category}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="visibility">Visibility</Label>
+                <Select value={newVisibility} onValueChange={(value) => setNewVisibility(value as 'public' | 'internal')}>
+                  <SelectTrigger id="visibility" className="bg-background">
+                    <SelectValue placeholder="Select visibility" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="public">Public</SelectItem>
+                    <SelectItem value="internal">Internal</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsAddEditDialogOpen(false)}>Cancel</Button>
               <Button type="submit">{editingFaq ? 'Update FAQ' : 'Add FAQ'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+function FAQList({ faqs, user, togglePinFAQ, deleteFAQ, addComment, setEditingFaq, setIsAddEditDialogOpen }: {
+  faqs: FAQ[]
+  user: User | null
+  togglePinFAQ: (faq: FAQ) => void
+  deleteFAQ: (id: string) => void
+  addComment: (faqId: string, content: string) => void
+  setEditingFaq: (faq: FAQ | null) => void
+  setIsAddEditDialogOpen: (isOpen: boolean) => void
+}) {
+  return (
+    <Accordion type="single" collapsible className="w-full space-y-2">
+      {faqs.map((faq) => (
+        <AccordionItem key={faq._id} value={faq._id} className="border rounded-lg overflow-hidden">
+          <AccordionTrigger className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800">
+            <div className="flex flex-wrap items-center gap-2 text-left">
+              <Badge>{faq.category}</Badge>
+              <span className="text-sm sm:text-base">{faq.question}</span>
+              {faq.isPinned && <Badge variant="secondary" className="p-1"><PinIcon className="h-3 w-3" /></Badge>}
+              {faq.visibility === 'internal' && <Badge variant="outline" className="p-1"><LockIcon className="h-3 w-3" /></Badge>}
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="px-4 py-2">
+            <p className="mb-2 text-sm sm:text-base">{faq.answer}</p>
+            <p className="text-xs sm:text-sm text-gray-500">
+              Last updated by {faq.updatedBy.username} on {new Date(faq.updatedAt).toLocaleString()}
+            </p>
+            {user && (user.role === 'admin' || user.role === 'editor') && (
+              <div className="flex gap-2 mt-2">
+                <Button onClick={() => {
+                  setEditingFaq(faq)
+                  setIsAddEditDialogOpen(true)
+                }} variant="outline" size="sm">
+                  <EditIcon className="h-4 w-4 mr-1" /> Edit
+                </Button>
+                <Button onClick={() => deleteFAQ(faq._id)} variant="destructive" size="sm">
+                  <TrashIcon className="h-4 w-4 mr-1" /> Delete
+                </Button>
+                <Button onClick={() => togglePinFAQ(faq)} variant="outline" size="sm">
+                  {faq.isPinned ? <PinOffIcon className="h-4 w-4 mr-1" /> : <PinIcon className="h-4 w-4 mr-1" />}
+                  {faq.isPinned ? 'Unpin' : 'Pin'}
+                </Button>
+              </div>
+            )}
+            <div className="mt-4">
+              <h4 className="text-sm font-bold">Comments:</h4>
+              {faq.comments.map((comment) => (
+                <p key={comment._id} className="text-xs text-gray-600 mt-1">
+                  {comment.content} - By {comment.userId} on {new Date(comment.createdAt).toLocaleString()}
+                </p>
+              ))}
+              {user && (
+                <form onSubmit={(e) => {
+                  e.preventDefault()
+                  const form = e.target as HTMLFormElement
+                  const content = form.comment.value
+                  addComment(faq._id, content)
+                  form.comment.value = ''
+                }} className="mt-2">
+                  <Input type="text" name="comment" placeholder="Add a comment..." className="text-sm" />
+                </form>
+              )}
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+      ))}
+    </Accordion>
   )
 }

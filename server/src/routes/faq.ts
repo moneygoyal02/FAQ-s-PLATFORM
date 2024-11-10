@@ -4,38 +4,61 @@ import { authMiddleware, isAdminOrEditor } from '../middleware/auth';
 
 const router = express.Router();
 
-router.get('/', async (req, res) => {
+router.get('/', authMiddleware, async (req: any, res) => {
   try {
-    const faqs = await FAQ.find().populate('createdBy updatedBy', 'username');
+    let query = {};
+    if (!req.user) {
+      // If user is not logged in, only fetch public FAQs
+      query = { visibility: 'public' };
+    }
+    // If user is logged in, fetch all FAQs (both public and internal)
+    const faqs = await FAQ.find(query).populate('createdBy updatedBy', 'username');
     res.json(faqs);
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching FAQs', error });
+    console.error('Error fetching FAQs:', error);
+    res.status(500).json({ message: 'Error fetching FAQs', error: (error as any).message });
   }
 });
 
-router.post('/', authMiddleware, isAdminOrEditor, async (req, res) => {
+
+router.post('/', authMiddleware, isAdminOrEditor, async (req: any, res) => {
+  console.log('====================================');
+  console.log('req.body', req.body);
+  console.log('====================================');
   try {
-    const { question, answer, category } = req.body;
+    const { question, answer, category, visibility } = req.body;
+   
     const faq = new FAQ({
       question,
       answer,
       category,
+      visibility: visibility || 'public', // Set a default if not provided
       createdBy: req.user.userId,
       updatedBy: req.user.userId,
     });
-    await faq.save();
-    res.status(201).json(faq);
+    const savedFaq = await faq.save();
+    res.status(201).json(savedFaq);
   } catch (error) {
-    res.status(500).json({ message: 'Error creating FAQ', error });
+    console.error('Error creating FAQ:', error);
+    res.status(500).json({ message: 'Error creating FAQ', error: (error as any).message });
   }
 });
 
-router.put('/:id', authMiddleware, isAdminOrEditor, async (req, res) => {
+
+
+router.put('/:id', authMiddleware, isAdminOrEditor, async (req: any, res) => {
   try {
-    const { question, answer, category, isPinned } = req.body;
+    const { question, answer, category, isPinned, visibility } = req.body;
     const faq = await FAQ.findByIdAndUpdate(
       req.params.id,
-      { question, answer, category, isPinned, updatedBy: req.user.userId },
+      { 
+        question, 
+        answer, 
+        category, 
+        isPinned, 
+        visibility: visibility || 'public', // Set a default if not provided
+        updatedBy: req.user.userId 
+      },
       { new: true }
     );
     if (!faq) {
@@ -43,9 +66,11 @@ router.put('/:id', authMiddleware, isAdminOrEditor, async (req, res) => {
     }
     res.json(faq);
   } catch (error) {
-    res.status(500).json({ message: 'Error updating FAQ', error });
+    console.error('Error updating FAQ:', error);
+    res.status(500).json({ message: 'Error updating FAQ', error: error.message });
   }
 });
+
 
 router.delete('/:id', authMiddleware, isAdminOrEditor, async (req, res) => {
   try {

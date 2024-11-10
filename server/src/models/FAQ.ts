@@ -11,6 +11,7 @@ const faqSchema = new mongoose.Schema({
   answer: { type: String, required: true },
   category: { type: String, required: true },
   isPinned: { type: Boolean, default: false },
+  visibility: { type: String, enum: ['public', 'internal'], default: 'public' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   comments: [commentSchema],
