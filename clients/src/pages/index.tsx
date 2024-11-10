@@ -83,14 +83,6 @@ export default function EnhancedFAQCollaborator() {
     refetch()
   }, [refetch])
 
-  useEffect(() => {
-    const token = localStorage.getItem('token')
-    if (token) {
-      decodeToken(token)
-    }
-    fetchFAQs()
-  }, [fetchFAQs, decodeToken])
-
   const decodeToken = (token: string) => {
     try {
       const payload = token.split('.')[1]
@@ -103,6 +95,16 @@ export default function EnhancedFAQCollaborator() {
       logout()
     }
   }
+
+  useEffect(() => {
+    const token = localStorage.getItem('token')
+    if (token) {
+      decodeToken(token)
+    }
+    fetchFAQs()
+  }, [decodeToken,fetchFAQs])
+
+  
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: { username: string; password: string }) => {
