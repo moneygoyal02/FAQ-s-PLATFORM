@@ -41,7 +41,22 @@ interface FAQ {
   comments: Comment[]
 }
 
-const categories = ['General', 'Product', 'Support', 'Technical', 'Business']
+const categories = [
+  'General', 
+  'Product', 
+  'Support', 
+  'Technical', 
+  'Business', 
+  'Product Development', 
+  'Customer Support', 
+  'Operations', 
+  'Marketing and Sales', 
+  'Legal and Compliance', 
+  'Finance and Funding', 
+  'Technology and Tools', 
+  'Team and Culture'
+];
+
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null)
