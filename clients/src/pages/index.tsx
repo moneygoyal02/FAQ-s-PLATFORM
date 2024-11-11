@@ -1,20 +1,17 @@
-/* eslint-disable react-hooks/exhaustive-deps */
-/* eslint-disable react/no-unescaped-entities */
 'use client'
-
 import React, { useState, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { PinIcon, PinOffIcon, EditIcon, TrashIcon, PlusIcon, SearchIcon, LockIcon } from 'lucide-react'
+import { PinIcon, PinOffIcon, EditIcon, TrashIcon, PlusIcon, SearchIcon, LockIcon, Loader2 } from 'lucide-react'
 import { Toaster, toast } from 'react-hot-toast'
 import { Label } from "@/components/ui/label"
 
@@ -68,7 +65,7 @@ export default function EnhancedFAQCollaborator() {
 
   const queryClient = useQueryClient()
 
-  const { data: faqs, isLoading, isError, refetch } = useQuery<FAQ[]>({
+  const { data: faqs, refetch } = useQuery<FAQ[]>({
     queryKey: ['faqs'],
     queryFn: async () => {
       const token = localStorage.getItem('token')
@@ -78,8 +75,8 @@ export default function EnhancedFAQCollaborator() {
     },
     refetchOnWindowFocus: false,
     refetchOnMount: true,
-    refetchInterval: false, // Prevent automatic refetching
-    staleTime: 30000, // Consider data fresh for 30 seconds
+    refetchInterval: false,
+    staleTime: 30000,
   })
   
 
@@ -93,7 +90,7 @@ export default function EnhancedFAQCollaborator() {
       const decoded = JSON.parse(atob(payload))
       setUser({ id: decoded.userId, username: decoded.username, role: decoded.role })
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
-      setActiveTab('internal') // Set default tab to 'internal' when user logs in
+      setActiveTab('internal')
     } catch (error) {
       console.error('Token decoding failed:', error)
       logout()
@@ -106,56 +103,78 @@ export default function EnhancedFAQCollaborator() {
       decodeToken(token)
     }
     fetchFAQs()
-  }, [])
+  }, [fetchFAQs])
 
-  
+  const loginMutation = useMutation<
+  { token: string; user: User },
+  Error,
+  { username: string; password: string }
+>({
+  mutationFn: async (credentials) => {
+    const response = await axios.post(`${API_URL}/auth/login`, credentials)
+    return response.data
+  },
+  onSuccess: (data) => {
+    localStorage.setItem('token', data.token)
+    decodeToken(data.token)
+    toast.success('Logged in successfully!')
+    setIsLoginDialogOpen(false)
+    fetchFAQs()
+  },
+  onError: () => {
+    toast.error('Login failed. Please check your credentials.')
+  },
+})
 
-  const loginMutation = useMutation({
-    mutationFn: async (credentials: { username: string; password: string }) => {
-      const response = await axios.post(`${API_URL}/auth/login`, credentials)
-      return response.data
-    },
-    onSuccess: (data) => {
-      localStorage.setItem('token', data.token)
-      decodeToken(data.token)
-      toast.success('Logged in successfully!')
-      setIsLoginDialogOpen(false)
-      fetchFAQs()
-    },
-    onError: () => {
-      toast.error('Login failed. Please check your credentials.')
-    },
-  })
+const addFaqMutation = useMutation<
+FAQ,
+Error,
+{
+  question: string
+  answer: string
+  category: string
+  visibility: 'public' | 'internal'
+}
+>({
+mutationFn: async (newFaq) => {
+  const response = await axios.post(`${API_URL}/faqs`, newFaq)
+  return response.data
+},
+onSuccess: () => {
+  queryClient.invalidateQueries({ queryKey: ['faqs'] })
+  toast.success('FAQ added successfully!')
+  setIsAddEditDialogOpen(false)
+},
+onError: () => {
+  toast.error('Failed to add FAQ. Please try again.')
+}
+})
 
-  const addFaqMutation = useMutation({
-    mutationFn: async (newFaq: { question: string; answer: string; category: string; visibility: 'public' | 'internal' }) => {
-      const response = await axios.post(`${API_URL}/faqs`, newFaq)
-      return response.data
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['faqs'] })
-      toast.success('FAQ added successfully!')
-      setIsAddEditDialogOpen(false)
-    },
-    onError: () => {
-      toast.error('Failed to add FAQ. Please try again.')
-    }
-  })
-
-  const updateFaqMutation = useMutation({
-    mutationFn: async (updatedFaq: { id: string; question: string; answer: string; category: string; isPinned: boolean; visibility: 'public' | 'internal' }) => {
-      const response = await axios.put(`${API_URL}/faqs/${updatedFaq.id}`, updatedFaq)
-      return response.data
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['faqs'] })
-      toast.success('FAQ updated successfully!')
-      setIsAddEditDialogOpen(false)
-    },
-    onError: () => {
-      toast.error('Failed to update FAQ. Please try again.')
-    }
-  })
+const updateFaqMutation = useMutation<
+FAQ,
+Error,
+{
+  id: string
+  question: string
+  answer: string
+  category: string
+  isPinned: boolean
+  visibility: 'public' | 'internal'
+}
+>({
+mutationFn: async (updatedFaq) => {
+  const response = await axios.put(`${API_URL}/faqs/${updatedFaq.id}`, updatedFaq)
+  return response.data
+},
+onSuccess: () => {
+  queryClient.invalidateQueries({ queryKey: ['faqs'] })
+  toast.success('FAQ updated successfully!')
+  setIsAddEditDialogOpen(false)
+},
+onError: () => {
+  toast.error('Failed to update FAQ. Please try again.')
+}
+})
 
   const deleteFaqMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -253,9 +272,6 @@ export default function EnhancedFAQCollaborator() {
      (activeTab === 'internal' && faq.visibility === 'internal'))
   ) || []
 
-  if (isLoading) return <div className="flex justify-center items-center h-screen">Loading...</div>
-  if (isError) return <div className="flex justify-center items-center h-screen">Error fetching FAQs</div>
-
   return (
     <div className="container mx-auto p-4 max-w-4xl">
       <Toaster position="top-right" />
@@ -271,9 +287,7 @@ export default function EnhancedFAQCollaborator() {
             <Button onClick={() => setIsLoginDialogOpen(true)} size="sm">Login</Button>
           )}
         </CardHeader>
-        <CardContent>
-          <CardDescription>Collaborate and manage your startup&apos;s frequently asked questions</CardDescription>
-        </CardContent>
+        
       </Card>
 
       <div className="flex gap-4 mb-6">
@@ -336,9 +350,18 @@ export default function EnhancedFAQCollaborator() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
-            <DialogFooter>
-              <Button type="submit">Login</Button>
-            </DialogFooter>
+           <DialogFooter>
+  <Button type="submit" disabled={loginMutation.isPending}>
+    {loginMutation.isPending ? (
+      <>
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        Logging in...
+      </>
+    ) : (
+      'Login'
+    )}
+  </Button>
+</DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
@@ -380,7 +403,7 @@ export default function EnhancedFAQCollaborator() {
                   <SelectTrigger id="category" className="bg-background">
                     <SelectValue placeholder="Select a category" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-white dark:bg-gray-800">
                     {categories.map((category) => (
                       <SelectItem key={category} value={category}>{category}</SelectItem>
                     ))}
@@ -393,7 +416,7 @@ export default function EnhancedFAQCollaborator() {
                   <SelectTrigger id="visibility" className="bg-background">
                     <SelectValue placeholder="Select visibility" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-white dark:bg-gray-800">
                     <SelectItem value="public">Public</SelectItem>
                     <SelectItem value="internal">Internal</SelectItem>
                   </SelectContent>
@@ -401,9 +424,27 @@ export default function EnhancedFAQCollaborator() {
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsAddEditDialogOpen(false)}>Cancel</Button>
-              <Button type="submit">{editingFaq ? 'Update FAQ' : 'Add FAQ'}</Button>
-            </DialogFooter>
+  <Button 
+    type="button" 
+    variant="outline" 
+    onClick={() => setIsAddEditDialogOpen(false)}
+  >
+    Cancel
+  </Button>
+  <Button 
+    type="submit" 
+    disabled={addFaqMutation.isPending || updateFaqMutation.isPending}
+  >
+    {addFaqMutation.isPending || updateFaqMutation.isPending ? (
+      <>
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        {editingFaq ? 'Updating...' : 'Adding...'}
+      </>
+    ) : (
+      editingFaq ? 'Update FAQ' : 'Add FAQ'
+    )}
+  </Button>
+</DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
