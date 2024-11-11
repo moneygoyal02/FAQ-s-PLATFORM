@@ -18,7 +18,7 @@ import { PinIcon, PinOffIcon, EditIcon, TrashIcon, PlusIcon, SearchIcon, LockIco
 import { Toaster, toast } from 'react-hot-toast'
 import { Label } from "@/components/ui/label"
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
+const API_URL = process.env.NEXT_PUBLIC_API_URL
 
 interface User {
   id: string
@@ -77,7 +77,11 @@ export default function EnhancedFAQCollaborator() {
       return response.data
     },
     refetchOnWindowFocus: false,
+    refetchOnMount: true,
+    refetchInterval: false, // Prevent automatic refetching
+    staleTime: 30000, // Consider data fresh for 30 seconds
   })
+  
 
   const fetchFAQs = useCallback(() => {
     refetch()
@@ -102,7 +106,7 @@ export default function EnhancedFAQCollaborator() {
       decodeToken(token)
     }
     fetchFAQs()
-  }, [decodeToken,fetchFAQs])
+  }, [])
 
   
 
@@ -155,16 +159,20 @@ export default function EnhancedFAQCollaborator() {
 
   const deleteFaqMutation = useMutation({
     mutationFn: async (id: string) => {
-      await axios.delete(`${API_URL}/faqs/${id}`)
+      const token = localStorage.getItem('token')
+      const headers = token ? { Authorization: `Bearer ${token}` } : {}
+      await axios.delete(`${API_URL}/faqs/${id}`, { headers })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['faqs'] })
       toast.success('FAQ deleted successfully!')
     },
-    onError: () => {
+    onError: (error) => {
+      console.error('Delete error:', error)
       toast.error('Failed to delete FAQ. Please try again.')
     }
   })
+  
 
   const addCommentMutation = useMutation({
     mutationFn: async ({ faqId, content }: { faqId: string; content: string }) => {
@@ -216,7 +224,9 @@ export default function EnhancedFAQCollaborator() {
   }
 
   const deleteFAQ = (id: string) => {
-    deleteFaqMutation.mutate(id)
+    if (window.confirm('Are you sure you want to delete this FAQ?')) {
+      deleteFaqMutation.mutate(id)
+    }
   }
 
   const togglePinFAQ = (faq: FAQ) => {

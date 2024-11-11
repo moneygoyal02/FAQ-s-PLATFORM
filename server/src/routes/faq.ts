@@ -78,9 +78,13 @@ router.delete('/:id', authMiddleware, isAdminOrEditor, async (req, res) => {
     if (!faq) {
       return res.status(404).json({ message: 'FAQ not found' });
     }
-    res.json({ message: 'FAQ deleted successfully' });
+    res.status(200).json({ message: 'FAQ deleted successfully' });
   } catch (error) {
-    res.status(500).json({ message: 'Error deleting FAQ', error });
+    console.error('Delete FAQ error:', error);
+    res.status(500).json({ 
+      message: 'Error deleting FAQ', 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
   }
 });
 
