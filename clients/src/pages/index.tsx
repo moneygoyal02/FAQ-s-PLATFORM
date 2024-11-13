@@ -1,21 +1,20 @@
-'use client'
 import React, { useState, useEffect, useCallback } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, useQuery, useMutation } from '@tanstack/react-query'
 import axios from 'axios'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Card, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card,  CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { PinIcon, PinOffIcon, EditIcon, TrashIcon, PlusIcon, SearchIcon, LockIcon, Loader2 } from 'lucide-react'
-import { Toaster, toast } from 'react-hot-toast'
+import { PinIcon, PinOffIcon, Edit, Trash, Plus, Search, Lock, Loader2 } from 'lucide-react'
 import { Label } from "@/components/ui/label"
+import { Skeleton } from "@/components/ui/skeleton"
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 
 interface User {
   id: string
@@ -49,7 +48,7 @@ const categories = [
   'Finance and Funding', 'Technology and Tools', 'Team and Culture'
 ]
 
-export default function EnhancedFAQCollaborator() {
+function EnhancedFAQCollaborator() {
   const [user, setUser] = useState<User | null>(null)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -60,12 +59,11 @@ export default function EnhancedFAQCollaborator() {
   const [newAnswer, setNewAnswer] = useState('')
   const [newCategory, setNewCategory] = useState('General')
   const [searchTerm, setSearchTerm] = useState('')
-  const [newVisibility, setNewVisibility] = useState<'public' | 'internal'>('public')
+  const [newVisibility, setNewVisibility] = useState<'public' | 'internal'>('internal') // Update 1
   const [activeTab, setActiveTab] = useState('all')
+  const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
 
-  const queryClient = useQueryClient()
-
-  const { data: faqs, refetch } = useQuery<FAQ[]>({
+  const { data: faqs, isLoading, refetch } = useQuery<FAQ[]>({
     queryKey: ['faqs'],
     queryFn: async () => {
       const token = localStorage.getItem('token')
@@ -73,12 +71,7 @@ export default function EnhancedFAQCollaborator() {
       const response = await axios.get(`${API_URL}/faqs`, { headers })
       return response.data
     },
-    refetchOnWindowFocus: false,
-    refetchOnMount: true,
-    refetchInterval: false,
-    staleTime: 30000,
   })
-  
 
   const fetchFAQs = useCallback(() => {
     refetch()
@@ -105,76 +98,81 @@ export default function EnhancedFAQCollaborator() {
     fetchFAQs()
   }, [fetchFAQs])
 
+  const showNotification = (type: 'success' | 'error', message: string) => {
+    setNotification({ type, message })
+    setTimeout(() => setNotification(null), 3000)
+  }
+
   const loginMutation = useMutation<
-  { token: string; user: User },
-  Error,
-  { username: string; password: string }
->({
-  mutationFn: async (credentials) => {
-    const response = await axios.post(`${API_URL}/auth/login`, credentials)
-    return response.data
-  },
-  onSuccess: (data) => {
-    localStorage.setItem('token', data.token)
-    decodeToken(data.token)
-    toast.success('Logged in successfully!')
-    setIsLoginDialogOpen(false)
-    fetchFAQs()
-  },
-  onError: () => {
-    toast.error('Login failed. Please check your credentials.')
-  },
-})
+    { token: string; user: User },
+    Error,
+    { username: string; password: string }
+  >({
+    mutationFn: async (credentials) => {
+      const response = await axios.post(`${API_URL}/auth/login`, credentials)
+      return response.data
+    },
+    onSuccess: (data) => {
+      localStorage.setItem('token', data.token)
+      decodeToken(data.token)
+      showNotification('success', 'Logged in successfully!')
+      setIsLoginDialogOpen(false)
+      fetchFAQs()
+    },
+    onError: () => {
+      showNotification('error', 'Login failed. Please check your credentials.')
+    },
+  })
 
-const addFaqMutation = useMutation<
-FAQ,
-Error,
-{
-  question: string
-  answer: string
-  category: string
-  visibility: 'public' | 'internal'
-}
->({
-mutationFn: async (newFaq) => {
-  const response = await axios.post(`${API_URL}/faqs`, newFaq)
-  return response.data
-},
-onSuccess: () => {
-  queryClient.invalidateQueries({ queryKey: ['faqs'] })
-  toast.success('FAQ added successfully!')
-  setIsAddEditDialogOpen(false)
-},
-onError: () => {
-  toast.error('Failed to add FAQ. Please try again.')
-}
-})
+  const addFaqMutation = useMutation<
+    FAQ,
+    Error,
+    {
+      question: string
+      answer: string
+      category: string
+      visibility: 'public' | 'internal'
+    }
+  >({
+    mutationFn: async (newFaq) => {
+      const response = await axios.post(`${API_URL}/faqs`, newFaq)
+      return response.data
+    },
+    onSuccess: () => {
+      refetch()
+      showNotification('success', 'FAQ added successfully!')
+      setIsAddEditDialogOpen(false)
+    },
+    onError: () => {
+      showNotification('error', 'Failed to add FAQ. Please try again.')
+    }
+  })
 
-const updateFaqMutation = useMutation<
-FAQ,
-Error,
-{
-  id: string
-  question: string
-  answer: string
-  category: string
-  isPinned: boolean
-  visibility: 'public' | 'internal'
-}
->({
-mutationFn: async (updatedFaq) => {
-  const response = await axios.put(`${API_URL}/faqs/${updatedFaq.id}`, updatedFaq)
-  return response.data
-},
-onSuccess: () => {
-  queryClient.invalidateQueries({ queryKey: ['faqs'] })
-  toast.success('FAQ updated successfully!')
-  setIsAddEditDialogOpen(false)
-},
-onError: () => {
-  toast.error('Failed to update FAQ. Please try again.')
-}
-})
+  const updateFaqMutation = useMutation<
+    FAQ,
+    Error,
+    {
+      id: string
+      question: string
+      answer: string
+      category: string
+      isPinned: boolean
+      visibility: 'public' | 'internal'
+    }
+  >({
+    mutationFn: async (updatedFaq) => {
+      const response = await axios.put(`${API_URL}/faqs/${updatedFaq.id}`, updatedFaq)
+      return response.data
+    },
+    onSuccess: () => {
+      refetch()
+      showNotification('success', 'FAQ updated successfully!')
+      setIsAddEditDialogOpen(false)
+    },
+    onError: () => {
+      showNotification('error', 'Failed to update FAQ. Please try again.')
+    }
+  })
 
   const deleteFaqMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -183,15 +181,14 @@ onError: () => {
       await axios.delete(`${API_URL}/faqs/${id}`, { headers })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['faqs'] })
-      toast.success('FAQ deleted successfully!')
+      refetch()
+      showNotification('success', 'FAQ deleted successfully!')
     },
     onError: (error) => {
       console.error('Delete error:', error)
-      toast.error('Failed to delete FAQ. Please try again.')
+      showNotification('error', 'Failed to delete FAQ. Please try again.')
     }
   })
-  
 
   const addCommentMutation = useMutation({
     mutationFn: async ({ faqId, content }: { faqId: string; content: string }) => {
@@ -199,11 +196,11 @@ onError: () => {
       return response.data
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['faqs'] })
-      toast.success('Comment added successfully!')
+      refetch()
+      showNotification('success', 'Comment added successfully!')
     },
     onError: () => {
-      toast.error('Failed to add comment. Please try again.')
+      showNotification('error', 'Failed to add comment. Please try again.')
     }
   })
 
@@ -216,7 +213,7 @@ onError: () => {
     setUser(null)
     localStorage.removeItem('token')
     delete axios.defaults.headers.common['Authorization']
-    toast.success('Logged out successfully!')
+    showNotification('success', 'Logged out successfully!')
     fetchFAQs()
     setActiveTab('all')
   }
@@ -239,7 +236,7 @@ onError: () => {
     setNewQuestion('')
     setNewAnswer('')
     setNewCategory('General')
-    setNewVisibility('public')
+    setNewVisibility('internal') // Update 3
   }
 
   const deleteFAQ = (id: string) => {
@@ -274,7 +271,11 @@ onError: () => {
 
   return (
     <div className="container mx-auto p-4 max-w-4xl">
-      <Toaster position="top-right" />
+      {notification && (
+        <div className={`fixed top-4 right-4 p-4 rounded-md ${notification.type === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white`}>
+          {notification.message}
+        </div>
+      )}
       <Card className="mb-8">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-2xl font-bold">Startup FAQ Collaborator</CardTitle>
@@ -287,12 +288,11 @@ onError: () => {
             <Button onClick={() => setIsLoginDialogOpen(true)} size="sm">Login</Button>
           )}
         </CardHeader>
-        
       </Card>
 
       <div className="flex gap-4 mb-6">
         <div className="relative flex-grow">
-          <SearchIcon className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
+          <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
           <Input
             type="text"
             placeholder="Search FAQs..."
@@ -303,7 +303,7 @@ onError: () => {
         </div>
         {user && (user.role === 'admin' || user.role === 'editor') && (
           <Button onClick={() => setIsAddEditDialogOpen(true)} className="whitespace-nowrap">
-            <PlusIcon className="mr-2 h-4 w-4" /> Add New FAQ
+            <Plus className="mr-2 h-4 w-4" /> Add New FAQ
           </Button>
         )}
       </div>
@@ -314,19 +314,46 @@ onError: () => {
           <TabsTrigger value="pinned" className="flex-1">Pinned FAQs</TabsTrigger>
           {user && (
             <TabsTrigger value="internal" className="flex-1">
-              <LockIcon className="h-4 w-4 mr-1" /> Internal FAQs
+              <Lock className="h-4 w-4 mr-1" /> Internal FAQs
             </TabsTrigger>
           )}
         </TabsList>
         <TabsContent value="all">
-          <FAQList faqs={filteredFAQs} user={user} togglePinFAQ={togglePinFAQ} deleteFAQ={deleteFAQ} addComment={addComment} setEditingFaq={setEditingFaq} setIsAddEditDialogOpen={setIsAddEditDialogOpen} />
+          <FAQList 
+            faqs={filteredFAQs} 
+            user={user} 
+            togglePinFAQ={togglePinFAQ} 
+            deleteFAQ={deleteFAQ} 
+            addComment={addComment} 
+            setEditingFaq={setEditingFaq} 
+            setIsAddEditDialogOpen={setIsAddEditDialogOpen}
+            isLoading={isLoading}
+          />
         </TabsContent>
         <TabsContent value="pinned">
-          <FAQList faqs={filteredFAQs} user={user} togglePinFAQ={togglePinFAQ} deleteFAQ={deleteFAQ} addComment={addComment} setEditingFaq={setEditingFaq} setIsAddEditDialogOpen={setIsAddEditDialogOpen} />
+          <FAQList 
+            faqs={filteredFAQs.filter(faq => faq.isPinned)} 
+            user={user} 
+            togglePinFAQ={togglePinFAQ} 
+            deleteFAQ={deleteFAQ} 
+            addComment={addComment} 
+            setEditingFaq={setEditingFaq} 
+            setIsAddEditDialogOpen={setIsAddEditDialogOpen}
+            isLoading={isLoading}
+          />
         </TabsContent>
         {user && (
           <TabsContent value="internal">
-            <FAQList faqs={filteredFAQs} user={user} togglePinFAQ={togglePinFAQ} deleteFAQ={deleteFAQ} addComment={addComment} setEditingFaq={setEditingFaq} setIsAddEditDialogOpen={setIsAddEditDialogOpen} />
+            <FAQList 
+              faqs={filteredFAQs.filter(faq => faq.visibility === 'internal')} 
+              user={user} 
+              togglePinFAQ={togglePinFAQ} 
+              deleteFAQ={deleteFAQ} 
+              addComment={addComment} 
+              setEditingFaq={setEditingFaq} 
+              setIsAddEditDialogOpen={setIsAddEditDialogOpen}
+              isLoading={isLoading}
+            />
           </TabsContent>
         )}
       </Tabs>
@@ -350,18 +377,18 @@ onError: () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
-           <DialogFooter>
-  <Button type="submit" disabled={loginMutation.isPending}>
-    {loginMutation.isPending ? (
-      <>
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-        Logging in...
-      </>
-    ) : (
-      'Login'
-    )}
-  </Button>
-</DialogFooter>
+            <DialogFooter>
+              <Button type="submit" disabled={loginMutation.isPending}>
+                {loginMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Logging in...
+                  </>
+                ) : (
+                  'Login'
+                )}
+              </Button>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
@@ -412,39 +439,40 @@ onError: () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="visibility">Visibility</Label>
+                {/* Update 2 */}
                 <Select value={newVisibility} onValueChange={(value) => setNewVisibility(value as 'public' | 'internal')}>
                   <SelectTrigger id="visibility" className="bg-background">
                     <SelectValue placeholder="Select visibility" />
                   </SelectTrigger>
                   <SelectContent className="bg-white dark:bg-gray-800">
-                    <SelectItem value="public">Public</SelectItem>
                     <SelectItem value="internal">Internal</SelectItem>
+                    <SelectItem value="public">Public</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <DialogFooter>
-  <Button 
-    type="button" 
-    variant="outline" 
-    onClick={() => setIsAddEditDialogOpen(false)}
-  >
-    Cancel
-  </Button>
-  <Button 
-    type="submit" 
-    disabled={addFaqMutation.isPending || updateFaqMutation.isPending}
-  >
-    {addFaqMutation.isPending || updateFaqMutation.isPending ? (
-      <>
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-        {editingFaq ? 'Updating...' : 'Adding...'}
-      </>
-    ) : (
-      editingFaq ? 'Update FAQ' : 'Add FAQ'
-    )}
-  </Button>
-</DialogFooter>
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setIsAddEditDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit" 
+                disabled={addFaqMutation.isPending || updateFaqMutation.isPending}
+              >
+                {addFaqMutation.isPending || updateFaqMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {editingFaq ? 'Updating...' : 'Adding...'}
+                  </>
+                ) : (
+                  editingFaq ? 'Update FAQ' : 'Add FAQ'
+                )}
+              </Button>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
@@ -452,7 +480,7 @@ onError: () => {
   )
 }
 
-function FAQList({ faqs, user, togglePinFAQ, deleteFAQ, addComment, setEditingFaq, setIsAddEditDialogOpen }: {
+function FAQList({ faqs, user, togglePinFAQ, deleteFAQ, addComment, setEditingFaq, setIsAddEditDialogOpen, isLoading }: {
   faqs: FAQ[]
   user: User | null
   togglePinFAQ: (faq: FAQ) => void
@@ -460,7 +488,18 @@ function FAQList({ faqs, user, togglePinFAQ, deleteFAQ, addComment, setEditingFa
   addComment: (faqId: string, content: string) => void
   setEditingFaq: (faq: FAQ | null) => void
   setIsAddEditDialogOpen: (isOpen: boolean) => void
+  isLoading: boolean
 }) {
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        {[...Array(5)].map((_, index) => (
+          <SkeletonFAQ key={index} />
+        ))}
+      </div>
+    )
+  }
+
   return (
     <Accordion type="single" collapsible className="w-full space-y-2">
       {faqs.map((faq) => (
@@ -470,7 +509,7 @@ function FAQList({ faqs, user, togglePinFAQ, deleteFAQ, addComment, setEditingFa
               <Badge>{faq.category}</Badge>
               <span className="text-sm sm:text-base">{faq.question}</span>
               {faq.isPinned && <Badge variant="secondary" className="p-1"><PinIcon className="h-3 w-3" /></Badge>}
-              {faq.visibility === 'internal' && <Badge variant="outline" className="p-1"><LockIcon className="h-3 w-3" /></Badge>}
+              {faq.visibility === 'internal' && <Badge variant="outline" className="p-1"><Lock className="h-3 w-3" /></Badge>}
             </div>
           </AccordionTrigger>
           <AccordionContent className="px-4 py-2">
@@ -484,10 +523,10 @@ function FAQList({ faqs, user, togglePinFAQ, deleteFAQ, addComment, setEditingFa
                   setEditingFaq(faq)
                   setIsAddEditDialogOpen(true)
                 }} variant="outline" size="sm">
-                  <EditIcon className="h-4 w-4 mr-1" /> Edit
+                  <Edit className="h-4 w-4 mr-1" /> Edit
                 </Button>
                 <Button onClick={() => deleteFAQ(faq._id)} variant="destructive" size="sm">
-                  <TrashIcon className="h-4 w-4 mr-1" /> Delete
+                  <Trash className="h-4 w-4 mr-1" /> Delete
                 </Button>
                 <Button onClick={() => togglePinFAQ(faq)} variant="outline" size="sm">
                   {faq.isPinned ? <PinOffIcon className="h-4 w-4 mr-1" /> : <PinIcon className="h-4 w-4 mr-1" />}
@@ -518,5 +557,33 @@ function FAQList({ faqs, user, togglePinFAQ, deleteFAQ, addComment, setEditingFa
         </AccordionItem>
       ))}
     </Accordion>
+  )
+}
+
+function SkeletonFAQ() {
+  return (
+    <div className="border rounded-lg p-4 space-y-2 overflow-hidden relative">
+      <div className="flex items-center space-x-2">
+        <Skeleton className="h-5 w-16" />
+        <Skeleton className="h-4 w-3/4" />
+      </div>
+      <Skeleton className="h-4 w-1/2" />
+      <div className="flex space-x-2 mt-2">
+        <Skeleton className="h-8 w-16" />
+        <Skeleton className="h-8 w-16" />
+        <Skeleton className="h-8 w-16" />
+      </div>
+      <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-gray-200/50 to-transparent" />
+    </div>
+  )
+}
+
+export default function Home() {
+  const queryClient = new QueryClient()
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <EnhancedFAQCollaborator />
+    </QueryClientProvider>
   )
 }
