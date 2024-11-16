@@ -276,9 +276,12 @@ function EnhancedFAQCollaborator() {
           {notification.message}
         </div>
       )}
-      <Card className="mb-8">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-2xl font-bold">Startup FAQ Collaborator</CardTitle>
+       <Card className="mb-8">
+        <CardHeader className="flex flex-col sm:flex-row items-center justify-between space-y-2 sm:space-y-0 pb-2">
+          <div>
+            <CardTitle className="text-2xl font-bold">Startup FAQ Collaborator</CardTitle>
+            <p className="text-sm italic mt-1 sm:mt-2 max-w-md">Don't overthink if we can build it or not, just focus on <em>how</em> to build it!</p>
+          </div>
           {user ? (
             <div className="flex items-center gap-2">
               <span className="text-sm">Welcome, {user.username} ({user.role})</span>
